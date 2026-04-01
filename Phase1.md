@@ -226,3 +226,111 @@
 - **HISTORIQUE_STATUT** : enregistre les changements de statut d'un **SATELLITE**
 
 
+
+# Note de modélisation
+
+## Question 1 
+Quelles tables du MLD sont strictement locales à un centre de contrôle ? Justifiez en
+expliquant pourquoi ces données n'ont pas vocation à être partagées entre centres
+
+**FENETRE_COM**
+Chaque fenêtre de communication est planifiée par le centre qui supervise la station sol concernée :
+
+CTR-001 (Paris) gère les fenêtres vers GS-TLS-01 et GS-KIR-01
+CTR-002 (Houston) gère les fenêtres vers GS-SGP-01
+
+Ces données sont purement opérationnelles et temps-réel : un centre n'a ni besoin de consulter les fenêtres planifiées par un autre centre.
+
+**HISTORIQUE_STATUT**
+Cette table est alimentée automatiquement par le trigger T5 lors de chaque UPDATE de statut sur SATELLITE. Elle constitue un journal d'audit local à chaque centre. Partager cet historique impliquerait une synchronisation continue entre centres.
+
+## Question 2 
+Quelles tables doivent être globales (accessibles depuis tous les centres) ? Quels
+mécanismes de synchronisation proposez-vous (réplication, partage en lecture seule, etc.)
+?
+
+| Table | Raison |
+|---|---|
+| `ORBITE` | Plan orbital commun à tous les satellites — référence physique immuable |
+| `SATELLITE` | Statut et caractéristiques des satellites — tous les centres pilotent les mêmes engins |
+| `INSTRUMENT` | Catalogue d'instruments — référence technique partagée |
+| `EMBARQUEMENT` | Lie satellites et instruments — nécessaire pour planifier les missions |
+| `CENTRE_CONTROLE` | Chaque centre doit connaître les autres pour la coordination |
+| `STATION_SOL` | Une station peut être consultée par plusieurs centres |
+| `MISSION` | Une mission mobilise des satellites gérés par des centres différents |
+| `PARTICIPATION` | Définit quels satellites participent à quelle mission — coordination inter-centres obligatoire |
+
+
+## Question 3
+Comment le centre de Singapour peut-il continuer à planifier des fenêtres de
+communication si le serveur central est indisponible ? Proposez une architecture de
+fragmentation horizontale ou verticale adaptée
+
+FENETRE_COM est une table locale à chaque centre. Mais pour planifier une fenêtre, le centre de Singapour a besoin de données globales, statut du satellite (SATELLITE), statut de la station (STATION_SOL) et missions actives (MISSION). Si le serveur central est indisponible, ces lectures échouent et la planification est bloquée
+
+La solution serait de faire en sorte que chaque centre dispose d'un nœud local autonome contenant :
+
+- Son fragment local de FENETRE_COM (les fenêtres qui le concernent uniquement)
+- Une réplique en lecture seule des tables globales nécessaires à la planification
+
+## Question 4
+Quels risques de cohérence identifiez-vous dans ce système multi-sites ? Citez deux
+scénarios concrets (ex : mise à jour simultanée du statut d'un satellite depuis deux
+centres)
+
+
+## Question 4 — Risques de cohérence dans le système multi-sites
+
+---
+
+### Scénario 1 — Mise à jour simultanée du statut d'un satellite
+
+**Contexte** : SAT-003 est `Opérationnel`. Une anomalie thermique est détectée simultanément par Paris et Houston, qui tentent chacun de mettre à jour le statut.
+
+```sql
+-- t=0 Paris
+UPDATE SATELLITE SET statut = 'En veille' WHERE id_satellite = 'SAT-003';
+
+-- t=0 Houston
+UPDATE SATELLITE SET statut = 'Désorbité' WHERE id_satellite = 'SAT-003';
+```
+
+**Risque** : sans verrou distribué, les deux transactions s'exécutent en parallèle. Le statut le plus critique (`Désorbité`) peut être écrasé par `En veille` laissant le système dans un état incohérent et potentiellement dangereux.
+
+**Conséquence concrète** : le trigger T5 s'exécute deux fois localement produisant deux entrées contradictoires dans `HISTORIQUE_STATUT`. La traçabilité est corrompue.
+
+**Mitigation** : protocole **2PC (Two-Phase Commit)** sur les écritures de `SATELLITE`, avec un nœud coordinateur unique qui sérialise les mises à jour concurrentes.
+
+
+### Scénario 2 — Planification d'une fenêtre sur un satellite entre-temps désorbité
+
+**Contexte** : la réplique locale de Singapour indique SAT-003 `Opérationnel`. Entre le dernier rafraîchissement et maintenant, Paris a mis à jour le statut en `Désorbité`.
+
+```sql
+-- t=0 Paris
+UPDATE SATELLITE SET statut = 'Désorbité' WHERE id_satellite = 'SAT-003';
+
+-- t=5 Singapour (réplique locale non encore rafraîchie)
+INSERT INTO FENETRE_COM (...) VALUES (..., 'SAT-003', ..., 'Planifiée');
+-- trigger T1 lit 'Opérationnel' sur la réplique → laisse passer l'insertion
+```
+
+**Risque** : le trigger T1 s'appuie sur la réplique locale pour vérifier le statut du satellite. Il lit `Opérationnel` au lieu de `Désorbité` et laisse passer l'insertion, créant une fenêtre planifiée vers un satellite hors service.
+
+**Conséquence concrète** : violation de la règle RGS06: une fenêtre de communication existe pour un satellite désorbité, ce que le système est censé interdire strictement.
+
+**Mitigation** : pour toute insertion dans `FENETRE_COM`, forcer une **lecture du statut satellite directement sur le nœud maître**, quitte à introduire une latence réseau ponctuelle.
+
+---
+
+### Synthèse
+
+| Scénario | Table impactée | Type de risque | Mitigation |
+|---|---|---|---|
+| Mise à jour simultanée de statut | `SATELLITE`, `HISTORIQUE_STATUT` | Conflit d'écriture concurrent | Two-Phase Commit + nœud coordinateur |
+| Fenêtre sur satellite désorbité | `FENETRE_COM`, `SATELLITE` | Lecture sur réplique obsolète | Lecture maître obligatoire à l'insertion |
+
+---
+
+> **Principe général** : ces deux scénarios illustrent le théorème CAP — en choisissant la **disponibilité** (Singapour peut écrire sans le serveur central), on sacrifie la **cohérence**. Le paramètre clé est le TTL de la réplique locale : plus il est court, plus la fenêtre d'incohérence se réduit, au prix d'un trafic réseau plus élevé.
+
