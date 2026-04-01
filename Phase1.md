@@ -279,10 +279,6 @@ scénarios concrets (ex : mise à jour simultanée du statut d'un satellite depu
 centres)
 
 
-## Question 4 — Risques de cohérence dans le système multi-sites
-
----
-
 ### Scénario 1 — Mise à jour simultanée du statut d'un satellite
 
 **Contexte** : SAT-003 est `Opérationnel`. Une anomalie thermique est détectée simultanément par Paris et Houston, qui tentent chacun de mettre à jour le statut.
@@ -321,7 +317,7 @@ INSERT INTO FENETRE_COM (...) VALUES (..., 'SAT-003', ..., 'Planifiée');
 
 **Mitigation** : pour toute insertion dans `FENETRE_COM`, forcer une **lecture du statut satellite directement sur le nœud maître**, quitte à introduire une latence réseau ponctuelle.
 
----
+
 
 ### Synthèse
 
@@ -330,7 +326,6 @@ INSERT INTO FENETRE_COM (...) VALUES (..., 'SAT-003', ..., 'Planifiée');
 | Mise à jour simultanée de statut | `SATELLITE`, `HISTORIQUE_STATUT` | Conflit d'écriture concurrent | Two-Phase Commit + nœud coordinateur |
 | Fenêtre sur satellite désorbité | `FENETRE_COM`, `SATELLITE` | Lecture sur réplique obsolète | Lecture maître obligatoire à l'insertion |
 
----
 
-> **Principe général** : ces deux scénarios illustrent le théorème CAP — en choisissant la **disponibilité** (Singapour peut écrire sans le serveur central), on sacrifie la **cohérence**. Le paramètre clé est le TTL de la réplique locale : plus il est court, plus la fenêtre d'incohérence se réduit, au prix d'un trafic réseau plus élevé.
+**Principe général** : ces deux scénarios illustrent le théorème CAP — en choisissant la **disponibilité** (Singapour peut écrire sans le serveur central), on sacrifie la **cohérence**. Le paramètre clé est le TTL de la réplique locale : plus il est court, plus la fenêtre d'incohérence se réduit, au prix d'un trafic réseau plus élevé.
 
