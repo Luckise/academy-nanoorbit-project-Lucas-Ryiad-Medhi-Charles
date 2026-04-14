@@ -19,7 +19,20 @@ class NanoOrbitRepository(
     private val _instruments = MutableStateFlow<Map<String, List<Instrument>>>(emptyMap())
 
     /**
-     * Cache-First: observe Room, API refreshes in background.
+     * Stratégie Cache-First : lecture locale Room en priorité, puis rafraîchissement API en arrière-plan.
+     *
+     * Lien ALTN83 Q3 — "Comment le centre de Singapour peut-il continuer à planifier des fenêtres
+     * de communication si le serveur central est indisponible ?"
+     *
+     * Cette stratégie répond directement à cette problématique : en cas d'indisponibilité du serveur
+     * (API REST), l'application continue de fonctionner grâce aux données mises en cache dans la base
+     * Room locale (SatelliteEntity, FenetreEntity). L'opérateur peut consulter les satellites,
+     * les fenêtres planifiées et les stations depuis le cache. Une bannière "Mode hors-ligne" s'affiche
+     * pour signaler que les données peuvent être obsolètes. Le rafraîchissement se fait automatiquement
+     * dès que la connectivité est rétablie.
+     *
+     * C'est l'équivalent mobile de la "réplique locale en lecture seule" proposée dans l'architecture
+     * de fragmentation horizontale de la Phase 1 ALTN83.
      */
     fun getSatellitesFlow(): Flow<List<Satellite>> {
         return satelliteDao.getAllSatellites().map { entities ->

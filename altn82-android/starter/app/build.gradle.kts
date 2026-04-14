@@ -5,10 +5,16 @@ plugins {
 }
 
 val envFile = rootProject.file("../../.env")
-val envProps = java.util.Properties().apply {
-    if (envFile.exists()) envFile.inputStream().use { load(it) }
+val apiBaseUrl: String = if (envFile.exists()) {
+    envFile.readLines()
+        .filter { it.contains("=") && !it.startsWith("#") }
+        .associate { line ->
+            val (key, value) = line.split("=", limit = 2)
+            key.trim() to value.trim()
+        }["API_BASE_URL"] ?: "http://10.0.2.2:5000/"
+} else {
+    "http://10.0.2.2:5000/"
 }
-val apiBaseUrl = envProps.getProperty("API_BASE_URL", "http://10.0.2.2:5000/")
 
 android {
     namespace = "fr.efrei.nanooribt"

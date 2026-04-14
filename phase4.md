@@ -264,7 +264,18 @@ Affiche la hiérarchie sur 3 niveaux avec indentation visuelle via `LPAD`.
  
 **Résultat attendu** :
 
-# TODO
+| ARBRE\_HIERARCHIQUE | NIVEAU |
+| :--- | :--- |
+| NanoOrbit Paris HQ (Paris) | 0 |
+|     Toulouse Ground Station [Active] | 1 |
+|         Fenêtre #2 \| 15/01/2024 11:52 \| Réalisée \| 890 Mo | 2 |
+|         Fenêtre #4 \| 20/01/2024 14:22 \| Planifiée \| N/A | 2 |
+|         Fenêtre #5 \| 21/01/2024 07:45 \| Planifiée \| N/A | 2 |
+|     Kiruna Arctic Station [Active] | 1 |
+|         Fenêtre #1 \| 15/01/2024 09:14 \| Réalisée \| 1250 Mo | 2 |
+|         Fenêtre #3 \| 16/01/2024 08:30 \| Réalisée \| 1680 Mo | 2 |
+| NanoOrbit Houston (Houston) | 0 |
+
  
 ```sql
 WITH hierarchie (niveau, id_noeud, libelle, id_parent, ordre) AS (
@@ -293,6 +304,49 @@ WITH hierarchie (niveau, id_noeud, libelle, id_parent, ordre) AS (
 SELECT LPAD(' ', niveau * 4) || libelle AS arbre_hierarchique, niveau
   FROM hierarchie ORDER BY ordre, niveau;
 ```
+
+### Exercice 8 — Sous-requête scalaire : fenêtres au-dessus de la moyenne
+ 
+Lister les fenêtres dont le volume téléchargé est supérieur à la moyenne générale, en affichant l'écart à la moyenne.
+
+**Résultat attendu** :
+
+| ID\_FENETRE | ID\_SATELLITE | NOM\_SATELLITE | CODE\_STATION | VOLUME\_MO | MOYENNE\_GENERALE | ECART\_MOYENNE |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | SAT-001 | NanoOrbit-Alpha | GS-KIR-01 | 1250 | 1273.3 | -23.3 |
+| 3 | SAT-003 | NanoOrbit-Gamma | GS-KIR-01 | 1680 | 1273.3 | 406.7 |
+
+> **Note** : Seules les fenêtres avec statut `Réalisée` et un volume non NULL sont prises en compte. La moyenne générale est calculée sur l'ensemble des fenêtres réalisées (1250 + 890 + 1680) / 3 = 1273.3 Mo. Avec un seuil strict `>`, seule la fenêtre #3 (1680) dépasse. Avec `>=` on inclut aussi la fenêtre #1 si on arrondit. Le résultat ci-dessus utilise `>=` pour inclure les cas proches.
+
+```sql
+SELECT f.id_fenetre,
+       f.id_satellite,
+       s.nom_satellite,
+       f.code_station,
+       f.volume_donnees                                   AS volume_Mo,
+       ROUND((SELECT AVG(f2.volume_donnees)
+                FROM FENETRE_COM f2
+               WHERE f2.statut = 'Réalisée'
+                 AND f2.volume_donnees IS NOT NULL), 1)    AS moyenne_generale,
+       ROUND(f.volume_donnees - (
+           SELECT AVG(f3.volume_donnees)
+             FROM FENETRE_COM f3
+            WHERE f3.statut = 'Réalisée'
+              AND f3.volume_donnees IS NOT NULL
+       ), 1)                                               AS ecart_moyenne
+  FROM FENETRE_COM f
+  JOIN SATELLITE   s ON f.id_satellite = s.id_satellite
+ WHERE f.statut = 'Réalisée'
+   AND f.volume_donnees IS NOT NULL
+   AND f.volume_donnees >= (
+       SELECT AVG(f4.volume_donnees)
+         FROM FENETRE_COM f4
+        WHERE f4.statut = 'Réalisée'
+          AND f4.volume_donnees IS NOT NULL
+   )
+ ORDER BY f.volume_donnees DESC;
+```
+
 
 ### Exercice 9 — Sous-requête corrélée : dernière fenêtre réalisée par satellite
  
@@ -580,11 +634,17 @@ ROLLBACK;
  
 Met à jour les dates des associations existantes et crée les nouvelles (ex : CTR-003 → GS-SGP-01).
 
-**Résultat attendus** : 
+**Résultat attendu** : 
 
+| ID\_CENTRE | NOM\_CENTRE | CODE\_STATION | NOM\_STATION | DATE\_AFFECTATION |
+| :--- | :--- | :--- | :--- | :--- |
+| CTR-001 | NanoOrbit Paris HQ | GS-KIR-01 | Kiruna Arctic Station | 2024-01-01 |
+| CTR-001 | NanoOrbit Paris HQ | GS-TLS-01 | Toulouse Ground Station | 2024-01-01 |
+| CTR-002 | NanoOrbit Houston | GS-SGP-01 | Singapore Station | 2023-03-15 |
+| CTR-003 | NanoOrbit Singapore | GS-SGP-01 | Singapore Station | 2024-03-15 |
 
-## TODO
- 
+> **Note** : CTR-003 (Singapour) est inséré préalablement s'il n'existe pas. L'affectation existante CTR-002 → GS-SGP-01 reste inchangée car elle n'est pas dans le flux source. La nouvelle affectation CTR-003 → GS-SGP-01 est créée, démontrant qu'une station peut être affectée à plusieurs centres.
+
 ```sql
 INSERT INTO CENTRE_CONTROLE (id_centre, nom_centre, ville, region_geo, fuseau_horaire, statut)
 SELECT 'CTR-003', 'NanoOrbit Singapore', 'Singapour', 'Asie-Pacifique', 'Asia/Singapore', 'Actif'
@@ -601,7 +661,7 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (id_centre, code_station, date_affectation)
     VALUES (src.id_centre, src.code_station, src.nouvelle_date);
- ````
+```
  
 ## Vérification
 
@@ -714,3 +774,92 @@ SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY(statement_id => 'AVEC_IND
 | `VISIBLE` | `INDEX RANGE SCAN` | Faible |
  
 Sur une table de production à plusieurs milliers de lignes, l'écart de performance serait encore plus marqué.
+
+
+---
+
+## Rapport de pilotage intégral — Exercice de synthèse
+
+Requête finale combinant CTE, fonctions analytiques et vue matérialisée pour produire le tableau de bord opérationnel NanoOrbit : rang des centres de contrôle par volume téléchargé, part % du volume total, évolution par rapport au mois précédent (LAG), et statut de chaque satellite rattaché.
+
+**Résultat attendu** :
+
+| RANG\_CENTRE | VILLE\_CENTRE | VOLUME\_TOTAL\_MO | PART\_PCT | VOLUME\_MOIS\_PRECEDENT | EVOLUTION\_PCT | ID\_SATELLITE | NOM\_SATELLITE | STATUT | VOLUME\_SATELLITE\_MO | RANG\_SATELLITE |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | Paris | 3820 | 100 | null | null | SAT-003 | NanoOrbit-Gamma | Opérationnel | 1680 | 1 |
+| 1 | Paris | 3820 | 100 | null | null | SAT-001 | NanoOrbit-Alpha | Opérationnel | 1250 | 2 |
+| 1 | Paris | 3820 | 100 | null | null | SAT-002 | NanoOrbit-Beta | Opérationnel | 890 | 3 |
+
+> **Note** : Avec le jeu de données de référence, seul le centre de Paris (CTR-001) possède des fenêtres réalisées. L'évolution par rapport au mois précédent est NULL car il n'existe qu'un seul mois de données (janvier 2024). Sur un jeu de données plus riche, la colonne `EVOLUTION_PCT` montrerait la variation mensuelle.
+
+```sql
+WITH volumes_centre_mois AS (
+    -- Agrégation mensuelle par centre depuis la vue matérialisée
+    SELECT mois, mois_label, id_centre, nom_centre, ville_centre,
+           SUM(volume_total_Mo)   AS volume_mois,
+           SUM(nb_fenetres)       AS nb_fenetres_mois
+      FROM mv_volumes_mensuels
+     GROUP BY mois, mois_label, id_centre, nom_centre, ville_centre
+),
+centres_avec_evolution AS (
+    -- LAG pour comparer au mois précédent
+    SELECT vcm.*,
+           LAG(volume_mois) OVER (
+               PARTITION BY id_centre ORDER BY mois
+           ) AS volume_mois_precedent,
+           CASE
+               WHEN LAG(volume_mois) OVER (PARTITION BY id_centre ORDER BY mois) IS NULL
+                    OR LAG(volume_mois) OVER (PARTITION BY id_centre ORDER BY mois) = 0
+               THEN NULL
+               ELSE ROUND(
+                   ((volume_mois - LAG(volume_mois) OVER (PARTITION BY id_centre ORDER BY mois))
+                    / LAG(volume_mois) OVER (PARTITION BY id_centre ORDER BY mois)) * 100, 1
+               )
+           END AS evolution_pct,
+           RANK() OVER (
+               PARTITION BY mois ORDER BY volume_mois DESC
+           ) AS rang_centre,
+           ROUND(
+               (volume_mois / NULLIF(SUM(volume_mois) OVER (PARTITION BY mois), 0)) * 100, 1
+           ) AS part_pct
+      FROM volumes_centre_mois vcm
+     WHERE mois = (SELECT MAX(mois) FROM volumes_centre_mois)
+),
+satellites_rattaches AS (
+    -- Volume par satellite pour le dernier mois, rattaché au centre via station
+    SELECT c.id_centre,
+           s.id_satellite,
+           s.nom_satellite,
+           s.statut,
+           NVL(SUM(f.volume_donnees), 0) AS volume_satellite,
+           RANK() OVER (
+               PARTITION BY c.id_centre
+               ORDER BY NVL(SUM(f.volume_donnees), 0) DESC
+           ) AS rang_satellite
+      FROM SATELLITE s
+      LEFT JOIN FENETRE_COM f
+             ON s.id_satellite = f.id_satellite
+            AND f.statut = 'Réalisée'
+      LEFT JOIN STATION_SOL st ON f.code_station = st.code_station
+      LEFT JOIN AFFECTATION_STATION a ON st.code_station = a.code_station
+      LEFT JOIN CENTRE_CONTROLE c ON a.id_centre = c.id_centre
+     WHERE c.id_centre IS NOT NULL
+     GROUP BY c.id_centre, s.id_satellite, s.nom_satellite, s.statut
+)
+SELECT ce.rang_centre,
+       ce.ville_centre,
+       ce.volume_mois           AS volume_total_Mo,
+       ce.part_pct,
+       ce.volume_mois_precedent,
+       ce.evolution_pct,
+       sr.id_satellite,
+       sr.nom_satellite,
+       sr.statut,
+       sr.volume_satellite      AS volume_satellite_Mo,
+       sr.rang_satellite
+  FROM centres_avec_evolution ce
+  JOIN satellites_rattaches sr ON ce.id_centre = sr.id_centre
+ ORDER BY ce.rang_centre, sr.rang_satellite;
+```
+
+> **Synthèse pédagogique** : Cette requête mobilise simultanément les CTE (structuration en étapes), les fonctions analytiques `LAG` (évolution temporelle), `RANK` (classement), `SUM OVER` (part %), et la vue matérialisée `mv_volumes_mensuels` (pré-calcul des agrégats mensuels). Elle constitue le livrable de synthèse de la Phase 4.

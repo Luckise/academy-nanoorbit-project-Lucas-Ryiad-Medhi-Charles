@@ -314,7 +314,7 @@ fun PreviewComponents() {
             SatelliteCard(MockData.satellites[0]) {}
             SatelliteCard(MockData.satellites[4]) {}
             Spacer(modifier = Modifier.height(8.dp))
-            FenetreCard(MockData.fenetres[0], "Toulouse Space Center")
+            FenetreCard(MockData.fenetres[0], "Kiruna Arctic Station")
             Spacer(modifier = Modifier.height(8.dp))
             InstrumentItem(MockData.instruments[0], "OK")
         }
