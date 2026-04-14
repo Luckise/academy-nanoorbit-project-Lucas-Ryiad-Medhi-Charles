@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
         val database = AppDatabase.getDatabase(this)
 
         val retrofit = Retrofit.Builder()
-            .baseUrl("https://api.nanoorbit.com/")
+            .baseUrl(BuildConfig.API_BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
         val api = retrofit.create(NanoOrbitApi::class.java)
@@ -170,7 +170,7 @@ fun MainScreen(viewModel: NanoOrbitViewModel) {
                 PlanningScreen(viewModel)
             }
             composable(Screen.Map.route) {
-                MapScreen()
+                MapScreen(viewModel)
             }
             composable(
                 route = Screen.Detail.route,

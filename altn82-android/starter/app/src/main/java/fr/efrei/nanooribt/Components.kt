@@ -233,7 +233,11 @@ fun FenetreCard(fenetre: FenetreCom, nomStation: String) {
 
 @Composable
 fun InstrumentItem(instrument: Instrument, etatFonctionnement: String) {
-    val isOk = etatFonctionnement == "OK"
+    val statusColor = when (etatFonctionnement) {
+        "OK" -> StatusOperational
+        "DEGRADED" -> StatusStandby
+        else -> StatusFailed
+    }
 
     Surface(
         modifier = Modifier
@@ -253,7 +257,7 @@ fun InstrumentItem(instrument: Instrument, etatFonctionnement: String) {
                 modifier = Modifier
                     .size(8.dp)
                     .clip(CircleShape)
-                    .background(if (isOk) StatusOperational else StatusFailed)
+                    .background(statusColor)
             )
 
             Spacer(modifier = Modifier.width(12.dp))

@@ -25,7 +25,7 @@ import java.time.LocalDateTime
 fun PlanningScreen(viewModel: NanoOrbitViewModel) {
     val fenetres by viewModel.fenetres.collectAsStateWithLifecycle()
     val satellites by viewModel.filteredSatellites.collectAsStateWithLifecycle()
-    val stations = MockData.stations
+    val stations by viewModel.stations.collectAsStateWithLifecycle()
 
     var selectedStationCode by remember { mutableStateOf<String?>(null) }
     var showPlanDialog by remember { mutableStateOf(false) }
