@@ -1,5 +1,10 @@
 # Phase 3 : PL/SQL & Package 
 
+
+```sql  
+SET SERVEROUTPUT ON 
+```
+
 ## Exercice 1 — Message de bienvenue + comptage global
 
 Affiche un message de bienvenue et le nombre de satellites, stations et missions présents dans la base.
@@ -652,7 +657,8 @@ END;
 
 
 
-### SPEC — Interface publique
+## L3-B Script SPEC pkg_nanoOrbit
+
 
 ```sql
 CREATE OR REPLACE PACKAGE pkg_nanoOrbit AS
@@ -711,7 +717,7 @@ SHOW ERRORS PACKAGE pkg_nanoOrbit;
 
 ---
 
-### BODY — Implémentation
+### L3-B Script BODY pkg_nanoOrbit
 
 ```sql
 CREATE OR REPLACE PACKAGE BODY pkg_nanoOrbit AS
@@ -876,36 +882,10 @@ SHOW ERRORS PACKAGE BODY pkg_nanoOrbit;
 
 
 
-### Scénario de validation
+### L3-D Script de validation
 
 Enchaîne les 7 sous-programmes dans un scénario réaliste. Un `ROLLBACK` final annule toutes les modifications de test.
 
-**Résultat attendu :**
-```
-
->>> ETAPE 1 : planifier_fenetre
-    → Fenêtre créée avec id_fenetre = 6
-
->>> ETAPE 2 : cloturer_fenetre
-    → Fenêtre 6 clôturée avec 1100 Mo
-
->>> ETAPE 3 : affecter_satellite_mission
-    → SAT-004 affecté à MSN-ARC-2023
-
->>> ETAPE 4 : mettre_en_revision
-    → SAT-002 mis en veille pour révision
-
->>> ETAPE 5 : calculer_volume_theorique
-    → Volume théorique fenêtre 1 : 21000 Mo
-
->>> ETAPE 6 : stats_satellite(SAT-001)
-    → Nb fenêtres      : 2
-    → Volume total     : 1250 Mo
-    → Durée moyenne    : 400 s
-
->>> ETAPE 7 : statut_constellation
-    → 3/5 satellites opérationnels, 2 mission(s) active(s)
-```
 
 ```sql
 DECLARE
