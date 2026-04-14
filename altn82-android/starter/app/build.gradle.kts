@@ -4,6 +4,12 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val envFile = rootProject.file("../../.env")
+val envProps = java.util.Properties().apply {
+    if (envFile.exists()) envFile.inputStream().use { load(it) }
+}
+val apiBaseUrl = envProps.getProperty("API_BASE_URL", "http://10.0.2.2:5000/")
+
 android {
     namespace = "fr.efrei.nanooribt"
     compileSdk = 36
@@ -16,19 +22,17 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl}\"")
     }
 
     buildTypes {
-        debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5000/\"")
-        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5000/\"")
         }
     }
     compileOptions {
