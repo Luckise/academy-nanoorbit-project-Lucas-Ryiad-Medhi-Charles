@@ -20,6 +20,9 @@ interface FenetreDao {
     @Query("SELECT * FROM fenetres_com")
     fun getAllFenetres(): Flow<List<FenetreEntity>>
 
+    @Query("SELECT * FROM fenetres_com")
+    suspend fun getAllFenetresList(): List<FenetreEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFenetres(fenetres: List<FenetreEntity>)
 

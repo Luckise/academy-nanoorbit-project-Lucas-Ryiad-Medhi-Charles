@@ -1,8 +1,11 @@
 package fr.efrei.nanooribt
 
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 class NanoOrbitRepository(
     private val api: NanoOrbitApi,
@@ -10,11 +13,13 @@ class NanoOrbitRepository(
     private val fenetreDao: FenetreDao
 ) {
 
+    private val _stations = MutableStateFlow<List<StationSol>>(emptyList())
+    val stations = _stations.asStateFlow()
+
+    private val _instruments = MutableStateFlow<Map<String, List<Instrument>>>(emptyMap())
+
     /**
-     * Stratégie Cache-First (Phase 3.5)
-     * On observe la base de données locale. 
-     * Cette méthode répond à la question Q3 de ALTN83 : 
-     * En cas d'indisponibilité du serveur, l'application utilise les données Room.
+     * Cache-First: observe Room, API refreshes in background.
      */
     fun getSatellitesFlow(): Flow<List<Satellite>> {
         return satelliteDao.getAllSatellites().map { entities ->
@@ -22,42 +27,106 @@ class NanoOrbitRepository(
         }
     }
 
-    /**
-     * Rafraîchit les données depuis l'API et met à jour le cache local.
-     */
     suspend fun refreshSatellites() {
-        delay(500) // Simulation latence
-        try {
-            // Simulation de l'appel API (en prod : val satellites = api.getSatellites())
-            val satellites = MockData.satellites 
-            satelliteDao.insertSatellites(satellites.map { it.toEntity() })
-        } catch (e: Exception) {
-            // Géré par le ViewModel
-            throw e
+        val response = api.getSatellites()
+        val entities = response.map { dto ->
+            SatelliteEntity(
+                idSatellite = dto.idSatellite,
+                nomSatellite = dto.nomSatellite,
+                statut = dto.statut,
+                formatCubesat = dto.formatCubesat,
+                idOrbite = dto.idOrbite,
+                dateLancement = dto.dateLancement,
+                masse = dto.masse
+            )
         }
+        satelliteDao.insertSatellites(entities)
     }
 
     fun getFenetresFlow(): Flow<List<FenetreCom>> {
         return fenetreDao.getAllFenetres().map { entities ->
-            // Note: Normalement on convertirait les entités en domaines avec LocalDateTime
-            // Pour le prototype, on utilise MockData si vide
-            if (entities.isEmpty()) MockData.fenetres else MockData.fenetres
+            entities.map { entity ->
+                FenetreCom(
+                    idFenetre = entity.idFenetre,
+                    datetimeDebut = entity.datetimeDebut?.let {
+                        LocalDateTime.parse(it)
+                    } ?: LocalDateTime.now(),
+                    duree = entity.duree,
+                    statut = try { StatutFenetre.valueOf(entity.statut) } catch (_: Exception) { StatutFenetre.PLANIFIEE },
+                    idSatellite = entity.idSatellite,
+                    codeStation = entity.codeStation,
+                    volumeDonnees = entity.volumeDonnees
+                )
+            }
         }
     }
 
     suspend fun refreshFenetres() {
-        delay(500)
-        // Simulation mise à jour cache fenêtres
+        val response = api.getFenetres()
+        val entities = response.map { dto ->
+            FenetreEntity(
+                idFenetre = dto.idFenetre,
+                datetimeDebut = dto.datetimeDebut ?: "",
+                duree = dto.duree,
+                statut = dto.statut,
+                idSatellite = dto.idSatellite,
+                codeStation = dto.codeStation,
+                volumeDonnees = dto.volumeDonnees
+            )
+        }
+        fenetreDao.insertFenetres(entities)
     }
 
-    /**
-     * Validation RG-F04 : Durée d'une fenêtre [1, 900] secondes.
-     */
-    fun validateFenetreDuree(duree: Int): String? {
-        return if (duree in 1..900) {
-            null
-        } else {
-            "La durée doit être comprise entre 1 et 900 secondes (Règle RG-F04)."
+    suspend fun refreshStations() {
+        val response = api.getStations()
+        _stations.value = response.map { dto ->
+            StationSol(
+                codeStation = dto.codeStation,
+                nomStation = dto.nomStation,
+                latitude = dto.latitude,
+                longitude = dto.longitude,
+                diametreAntenne = dto.diametreAntenne,
+                debitMax = dto.debitMax
+            )
         }
+    }
+
+    suspend fun getInstrumentsForSatellite(satelliteId: String): List<Instrument> {
+        val cached = _instruments.value[satelliteId]
+        if (cached != null) return cached
+
+        val response = api.getInstruments(satelliteId)
+        val instruments = response.map { dto ->
+            Instrument(
+                refInstrument = dto.refInstrument,
+                typeInstrument = dto.typeInstrument,
+                modele = dto.modele,
+                resolution = dto.resolution,
+                consommation = dto.consommation,
+                etatFonctionnement = dto.etatFonctionnement
+            )
+        }
+        _instruments.value = _instruments.value + (satelliteId to instruments)
+        return instruments
+    }
+
+    suspend fun getMissionsForSatellite(satelliteId: String): List<Mission> {
+        val response = api.getSatelliteMissions(satelliteId)
+        return response.map { dto ->
+            Mission(
+                idMission = dto.idMission,
+                nomMission = dto.nomMission,
+                objectif = dto.objectif ?: "",
+                dateDebut = dto.dateDebut?.let { LocalDate.parse(it) } ?: LocalDate.now(),
+                statutMission = dto.statutMission,
+                dateFin = dto.dateFin?.let { LocalDate.parse(it) },
+                zoneGeoCible = dto.zoneGeoCible
+            )
+        }
+    }
+
+    fun validateFenetreDuree(duree: Int): String? {
+        return if (duree in 1..900) null
+        else "La duree doit etre comprise entre 1 et 900 secondes (Regle RG-F04)."
     }
 }

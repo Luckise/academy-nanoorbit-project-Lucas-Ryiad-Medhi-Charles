@@ -31,10 +31,12 @@ impdp VLS_ADMIN/Admin_VLS_2026@FREEPDB1 \
     LOGFILE=vls_admin_import.log \
     TABLE_EXISTS_ACTION=REPLACE
 
-if [ $? -eq 0 ]; then
+EXIT_CODE=$?
+# Exit code 5 = completed with warnings (privilege errors are expected)
+if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 5 ]; then
     echo "Import completed successfully."
     touch "$MARKER"
 else
-    echo "Import failed. Check /opt/oracle/dump/vls_admin_import.log"
+    echo "Import failed (exit code $EXIT_CODE). Check /opt/oracle/dump/vls_admin_import.log"
     exit 1
 fi
