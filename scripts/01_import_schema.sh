@@ -13,6 +13,7 @@ fi
 # Check dump file exists
 if [ ! -f "$DUMP_FILE" ]; then
     echo "ERROR: Dump file not found at $DUMP_FILE"
+    echo "Hint: run this script inside the Oracle container (or as an Oracle startup script), not on the Windows host."
     exit 1
 fi
 

@@ -1,7 +1,6 @@
 package fr.efrei.nanooribt
 
 import android.os.Bundle
-import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,6 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import androidx.preference.PreferenceManager
 import androidx.work.*
 import fr.efrei.nanooribt.ui.theme.*
 import org.osmdroid.config.Configuration
